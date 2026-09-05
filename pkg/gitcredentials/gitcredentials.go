@@ -146,32 +146,41 @@ func ToString(credentials *GitCredentials) string {
 
 func SetUser(userName string, user *GitUser) error {
 	if user.Name != "" {
-		shellCommand := fmt.Sprintf(`git config --global user.name "%s"`, user.Name)
-		args := []string{}
-		if userName != "" {
-			args = append(args, "su", userName, "-c", shellCommand)
-		} else {
-			args = append(args, "sh", "-c", shellCommand)
-		}
-
-		out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
+		err := setGitConfigValue(userName, "user.name", user.Name)
 		if err != nil {
-			return fmt.Errorf("set user.name '%s': %w", strings.Join(args, " "), command.WrapCommandError(out, err))
+			return fmt.Errorf("set user.name: %w", err)
 		}
 	}
 	if user.Email != "" {
-		shellCommand := fmt.Sprintf(`git config --global user.email "%s"`, user.Email)
-		args := []string{}
-		if userName != "" {
-			args = append(args, "su", userName, "-c", shellCommand)
-		} else {
-			args = append(args, "sh", "-c", shellCommand)
-		}
-
-		out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
+		err := setGitConfigValue(userName, "user.email", user.Email)
 		if err != nil {
-			return fmt.Errorf("set user.email '%s': %w", strings.Join(args, " "), command.WrapCommandError(out, err))
+			return fmt.Errorf("set user.email: %w", err)
 		}
+	}
+	return nil
+}
+
+// setGitConfigValue sets a global git config value for the given user.
+// It writes to the user's own ~/.gitconfig via `git config --file` instead of
+// running `git config --global` through `su`, because `su` keeps the current
+// environment (e.g. HOME=/root when running as root), which makes git fail
+// with "fatal: error reading '/root/.git'" for non-root users.
+func setGitConfigValue(userName, key, value string) error {
+	scopeArgs := []string{"config"}
+	if userName != "" {
+		p, err := getGlobalGitConfigPath(userName)
+		if err != nil {
+			return fmt.Errorf("get git global config path for %s: %w", userName, err)
+		}
+		scopeArgs = append(scopeArgs, "--file", p)
+	} else {
+		scopeArgs = append(scopeArgs, "--global")
+	}
+
+	args := append(scopeArgs, key, value)
+	out, err := exec.Command("git", args...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git %s: %w", strings.Join(args, " "), command.WrapCommandError(out, err))
 	}
 	return nil
 }
