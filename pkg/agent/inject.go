@@ -128,7 +128,10 @@ func InjectAgentAndExecute(
 				lastMessage = time.Now()
 			}
 
-			log.Debugf("Inject Error: %s%v", buf.String(), err)
+			// surface the underlying inject error at info level: without it,
+			// a failing inject (e.g. provider connection issues) is completely
+			// silent and looks like an endless hang
+			log.Infof("Inject Error: %s%v", buf.String(), err)
 			time.Sleep(time.Second * 3)
 			continue
 		}
