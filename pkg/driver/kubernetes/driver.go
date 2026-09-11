@@ -152,11 +152,10 @@ func (k *KubernetesDriver) CommandDevContainer(ctx context.Context, workspaceId,
 	workspaceId = getID(workspaceId)
 
 	var args []string
-	if user != "" && user != "root" {
-		args = []string{"su", user, "-c", command}
-	} else {
-		args = []string{"sh", "-c", command}
-	}
+	// PATCHED for restricted PodSecurity: the pod already runs as the remote
+	// user (UID 1000), so `su <user> -c` fails with a PAM authentication
+	// error. Exec directly instead.
+	args = []string{"sh", "-c", command}
 
 	return k.client.Exec(ctx, &ExecStreamOptions{
 		Pod:       workspaceId,

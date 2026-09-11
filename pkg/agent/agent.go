@@ -24,7 +24,7 @@ import (
 
 const DefaultInactivityTimeout = time.Minute * 20
 
-const ContainerDevPodHelperLocation = "/usr/local/bin/devpod"
+const ContainerDevPodHelperLocation = "/tmp/devpod"
 
 const RemoteDevPodHelperLocation = "/tmp/devpod"
 

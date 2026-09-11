@@ -512,9 +512,9 @@ func (cmd *SSHCmd) startTunnel(ctx context.Context, devPodConfig *config.Config,
 	if cmd.Debug {
 		command += " --debug"
 	}
-	if cmd.User != "" && cmd.User != "root" {
-		command = fmt.Sprintf("su -c \"%s\" '%s'", command, cmd.User)
-	}
+	// PATCHED for restricted PodSecurity: container already runs as the
+	// remote user; `su` fails with PAM auth error under non-root UID.
+	_ = cmd.User
 
 	envVars, err := cmd.retrieveEnVars()
 	if err != nil {
@@ -628,9 +628,8 @@ func (cmd *SSHCmd) setupGPGAgent(
 	}
 
 	command := strings.Join(forwardAgent, " ")
-	if cmd.User != "" && cmd.User != "root" {
-		command = fmt.Sprintf("su -c \"%s\" '%s'", command, cmd.User)
-	}
+	// PATCHED for restricted PodSecurity (see above): no `su` wrapping.
+	_ = cmd.User
 
 	log.Debugf(
 		"[GPG] start reverse forward of gpg-agent socket %s, keeping connection open",
