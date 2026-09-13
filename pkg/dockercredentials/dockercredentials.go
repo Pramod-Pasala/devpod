@@ -52,7 +52,23 @@ func ConfigureCredentialsContainer(userName string, port int, log log.Logger) er
 		configDir = filepath.Join(userHome, ".docker")
 	}
 
-	return configureCredentials(userName, "#!/bin/sh", "/usr/local/bin", configDir, port, log)
+	// PATCHED for restricted PodSecurity: the container runs as a non-root
+	// user and /usr/local/bin is root-owned, so writing the credential
+	// helper there fails with permission denied. Use a user-writable dir
+	// on the PATH instead. Docker resolves credential helpers from PATH,
+	// not from a fixed location, so this is equivalent.
+	targetDir := os.Getenv("DEVPOD_DOCKER_CREDENTIAL_HELPER_DIR")
+	if targetDir == "" {
+		targetDir = filepath.Join(userHome, ".local", "bin")
+	}
+
+	// the target dir may not exist yet on a fresh devcontainer
+	err = file.MkdirAll(userName, targetDir, 0755)
+	if err != nil {
+		return err
+	}
+
+	return configureCredentials(userName, "#!/bin/sh", targetDir, configDir, port, log)
 }
 
 const AzureContainerRegistryUsername = "00000000-0000-0000-0000-000000000000"
