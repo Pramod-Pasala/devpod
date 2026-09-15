@@ -25,6 +25,15 @@ func PrepareCmdUser(cmd *exec.Cmd, userName string) error {
 		"LOGNAME": u.Username,
 	})
 
+	// PATCHED for restricted PodSecurity: when we already run as the target
+	// user, setting SysProcAttr.Credential triggers setgroups(0, nil) which
+	// returns EPERM for non-root callers, making every fork/exec fail with
+	// "operation not permitted". Skip credential switching in that case.
+	currentUser, err := user.Current()
+	if err == nil && currentUser.Uid == u.Uid {
+		return nil
+	}
+
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Credential: &syscall.Credential{
 			Uid: uint32(uid),

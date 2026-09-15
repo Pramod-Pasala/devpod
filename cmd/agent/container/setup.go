@@ -576,14 +576,20 @@ func configureSystemGitCredentials(ctx context.Context, cancel context.CancelFun
 	gitCredentials := fmt.Sprintf("!'%s' agent git-credentials --port %d", binaryPath, serverPort)
 	_ = os.Setenv("DEVPOD_GIT_HELPER_PORT", strconv.Itoa(serverPort))
 
-	err = git.CommandContext(ctx, git.GetDefaultExtraEnv(false), "config", "--system", "--add", "credential.helper", gitCredentials).Run()
-	if err != nil {
-		return nil, fmt.Errorf("add git credential helper: %w", err)
+	// PATCHED for restricted PodSecurity: --system writes /etc/gitconfig which
+	// is root-owned; fall back to --global when the agent runs as non-root.
+	scope := "--system"
+	if err := git.CommandContext(ctx, git.GetDefaultExtraEnv(false), "config", scope, "--add", "credential.helper", gitCredentials).Run(); err != nil {
+		log.Debugf("system git config failed (%v), falling back to --global", err)
+		scope = "--global"
+		if err := git.CommandContext(ctx, git.GetDefaultExtraEnv(false), "config", scope, "--add", "credential.helper", gitCredentials).Run(); err != nil {
+			return nil, fmt.Errorf("add git credential helper: %w", err)
+		}
 	}
 
 	cleanup := func() {
 		log.Debug("Unset setup system credential helper")
-		err = git.CommandContext(ctx, git.GetDefaultExtraEnv(false), "config", "--system", "--unset", "credential.helper").Run()
+		err = git.CommandContext(ctx, git.GetDefaultExtraEnv(false), "config", scope, "--unset", "credential.helper").Run()
 		if err != nil {
 			log.Errorf("unset system credential helper %v", err)
 		}
