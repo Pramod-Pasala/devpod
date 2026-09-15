@@ -6,7 +6,9 @@ import (
 	netUrl "net/url"
 	"os"
 	"os/exec"
+	osuser "os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/loft-sh/devpod/pkg/command"
@@ -145,13 +147,33 @@ func ToString(credentials *GitCredentials) string {
 }
 
 func SetUser(userName string, user *GitUser) error {
+	// Under restricted PodSecurity the agent already runs as the target user,
+	// so `su userName -c ...` would prompt for a password and fail. Only use
+	// su when we are actually running as a different (privileged) user.
+	runAsUser := func(shellCommand string) ([]string, error) {
+		if userName != "" {
+			currentUser, err := osuser.Current()
+			if err == nil && currentUser.Username == userName {
+				return []string{"sh", "-c", shellCommand}, nil
+			}
+			if err == nil {
+				uid, uidErr := strconv.Atoi(currentUser.Uid)
+				if uidErr == nil && uid == 0 {
+					// running as root: switch to the target user via su
+					return []string{"su", userName, "-c", shellCommand}, nil
+				}
+			}
+			// non-root and not the target user: best effort, run directly
+			return []string{"sh", "-c", shellCommand}, nil
+		}
+		return []string{"sh", "-c", shellCommand}, nil
+	}
+
 	if user.Name != "" {
 		shellCommand := fmt.Sprintf(`git config --global user.name "%s"`, user.Name)
-		args := []string{}
-		if userName != "" {
-			args = append(args, "su", userName, "-c", shellCommand)
-		} else {
-			args = append(args, "sh", "-c", shellCommand)
+		args, err := runAsUser(shellCommand)
+		if err != nil {
+			return err
 		}
 
 		out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
@@ -161,11 +183,9 @@ func SetUser(userName string, user *GitUser) error {
 	}
 	if user.Email != "" {
 		shellCommand := fmt.Sprintf(`git config --global user.email "%s"`, user.Email)
-		args := []string{}
-		if userName != "" {
-			args = append(args, "su", userName, "-c", shellCommand)
-		} else {
-			args = append(args, "sh", "-c", shellCommand)
+		args, err := runAsUser(shellCommand)
+		if err != nil {
+			return err
 		}
 
 		out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
